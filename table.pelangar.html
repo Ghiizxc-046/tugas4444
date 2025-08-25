@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tabel Hukuman</title>
+  <style>
+    :root{
+      --bg:#0f172a;        /* slate-900 */
+      --card:#111827;      /* gray-900 */
+      --muted:#94a3b8;     /* slate-400 */
+      --text:#e5e7eb;      /* gray-200 */
+      --border:#1f2937;    /* gray-800 */
+      --accent:#22c55e;    /* green-500 */
+      --warn:#f59e0b;      /* amber-500 */
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;background:radial-gradient(1200px 800px at 20% -10%,#0b1220,var(--bg));color:var(--text)}
+    .wrap{max-width:900px;margin:48px auto;padding:0 16px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.25);backdrop-filter:blur(6px)}
+    h1{margin:0 0 6px;font-size:28px;letter-spacing:.3px}
+    .sub{color:var(--muted);margin-bottom:18px;font-size:14px}
+    .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 18px}
+    button{appearance:none;border:1px solid var(--border);background:#0b1220;color:var(--text);padding:10px 12px;border-radius:12px;cursor:pointer;transition:transform .04s ease,background .2s ease,border-color .2s ease}
+    button:hover{background:#0a0f1c;border-color:#273244}
+    button:active{transform:translateY(1px)}
+    .btn-accent{background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.35)}
+    .btn-warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.35)}
+
+    .table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:12px}
+    .table thead th{text-align:left;padding:12px;font-weight:600;font-size:14px;color:var(--muted);border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
+    .table tbody td{padding:12px;border-bottom:1px dashed var(--border)}
+    .row:hover{background:rgba(255,255,255,.02)}
+
+    input[type="text"],input[type="number"]{width:100%;background:#0b1220;color:var(--text);border:1px solid var(--border);padding:8px 10px;border-radius:10px}
+    input[type="number"]{appearance:textfield}
+    input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button{appearance:none;margin:0}
+
+    .footer{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+    .pill{padding:6px 10px;border-radius:999px;border:1px solid var(--border)}
+    .pill.total{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.35)}
+    .hide-print{}
+    @media print{
+      body{background:#fff;color:#111}
+      .card{box-shadow:none;border:1px solid #ddd}
+      .table thead th{color:#333;background:#f8f8f8}
+      .sub{color:#444}
+      .hide-print{display:none !important}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Tabel Hukuman</h1>
+      <div class="sub">Kolom: <strong>No</strong>, <strong>Nama</strong> (biarkan kosong/polos), <strong>Pelanggaran</strong>, <strong>Denda Hukuman</strong> (Rp). Data tersimpan otomatis di browser Anda.</div>
+
+      <div class="toolbar">
+        <button id="btnTambah" class="btn-accent hide-print">Tambah Baris</button>
+        <button id="btnHapusTerakhir" class="btn-warn hide-print">Hapus Baris Terakhir</button>
+        <button id="btnBersihkan" class="hide-print">Bersihkan Isi</button>
+        <button id="btnSimpan" class="hide-print">Simpan</button>
+        <button id="btnReset" class="hide-print">Reset Data</button>
+        <button id="btnPrint" class="hide-print">Cetak</button>
+        <button id="btnCSV" class="hide-print">Unduh CSV</button>
+      </div>
+
+      <table class="table" aria-label="Tabel Hukuman">
+        <thead>
+          <tr>
+            <th style="width:56px">No</th>
+            <th>Nama</th>
+            <th>Pelanggaran</th>
+            <th style="width:180px">Denda Hukuman (Rp)</th>
+            <th class="hide-print" style="width:72px">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <!-- baris di-render via JS -->
+        </tbody>
+      </table>
+
+      <div class="footer">
+        <div class="pill total">Total Denda: <span id="totalDenda">Rp 0</span></div>
+        <div class="sub">Tips: isi <em>Nama</em> secara manual (polos), tulis pelanggaran, lalu masukkan nominal denda. Gunakan <strong>Ctrl+P</strong> untuk mencetak.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'hukuman_data_v1';
+
+    function esc(s=''){
+      return String(s)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;');
+    }
+
+    function loadSaved(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(!raw) return { rows: initRows(50) };
+        const parsed = JSON.parse(raw);
+        // ensure structure
+        if(!parsed.rows || !Array.isArray(parsed.rows)) parsed.rows = initRows(50);
+        return parsed;
+      }catch(e){
+        return { rows: initRows(50) };
+      }
+    }
+
+    function initRows(n=50){
+      return Array.from({length:n}, ()=> ({nama:'', pelanggaran:'', denda:''}));
+    }
+
+    const state = loadSaved();
+    const tbody = document.getElementById('tbody');
+    const totalDenda = document.getElementById('totalDenda');
+
+    function render(){
+      tbody.innerHTML='';
+      state.rows.forEach((r, idx)=>{
+        const tr = document.createElement('tr');
+        tr.className = 'row';
+        tr.innerHTML = `
+          <td>${idx+1}</td>
+          <td><input type="text" id="nama-${idx}" placeholder="Nama (polosan)" value="${esc(r.nama)}"></td>
+          <td><input type="text" id="pel-${idx}" placeholder="Apa yang dilanggar" value="${esc(r.pelanggaran)}"></td>
+          <td><input type="number" id="den-${idx}" placeholder="0" min="0" step="1000" value="${r.denda!==''? esc(r.denda):''}"></td>
+          <td class="hide-print"><button data-del="${idx}">Hapus</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Bind listeners per row
+      state.rows.forEach((_, idx)=>{
+        document.getElementById(`nama-${idx}`).addEventListener('input', (e)=>{ state.rows[idx].nama = e.target.value; autosave(); });
+        document.getElementById(`pel-${idx}`).addEventListener('input', (e)=>{ state.rows[idx].pelanggaran = e.target.value; autosave(); });
+        document.getElementById(`den-${idx}`).addEventListener('input', (e)=>{ state.rows[idx].denda = e.target.value; updateTotal(); autosave(); });
+      });
+
+      tbody.querySelectorAll('button[data-del]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const i = parseInt(btn.getAttribute('data-del'));
+          state.rows.splice(i,1);
+          render();
+          autosave();
+        });
+      });
+
+      updateTotal();
+    }
+
+    function updateTotal(){
+      const sum = state.rows.reduce((acc, r)=> acc + (Number(r.denda)||0), 0);
+      try{
+        totalDenda.textContent = new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(sum);
+      }catch(e){
+        totalDenda.textContent = 'Rp ' + String(sum).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      }
+    }
+
+    function autosave(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function saveManual(){
+      autosave();
+      alert('Disimpan ke perangkat Anda (localStorage).');
+    }
+
+    function resetAll(){
+      if(!confirm('Hapus semua data tersimpan dan kosongkan tabel?')) return;
+      localStorage.removeItem(STORAGE_KEY);
+      state.rows = initRows(50);
+      render();
+    }
+
+    function clearContent(){
+      if(!confirm('Kosongkan semua kolom tanpa mengubah jumlah baris?')) return;
+      state.rows = state.rows.map(()=> ({nama:'', pelanggaran:'', denda:''}));
+      render();
+      autosave();
+    }
+
+    function addRow(){
+      state.rows.push({nama:'', pelanggaran:'', denda:''});
+      render();
+      autosave();
+    }
+
+    function removeLast(){
+      if(state.rows.length===0) return;
+      state.rows.pop();
+      render();
+      autosave();
+    }
+
+    function toCSV(){
+      const header = ['No','Nama','Pelanggaran','Denda'];
+      let csv = header.join(',')+'\n';
+      state.rows.forEach((r,i)=>{
+        const row = [i+1, r.nama||'', r.pelanggaran||'', Number(r.denda)||0];
+        csv += row.map(v=> /[",\n]/.test(String(v)) ? '"'+String(v).replaceAll('"','""')+'"' : String(v)).join(',') + '\n';
+      });
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'tabel_hukuman.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // Buttons
+    document.getElementById('btnTambah').addEventListener('click', addRow);
+    document.getElementById('btnHapusTerakhir').addEventListener('click', removeLast);
+    document.getElementById('btnBersihkan').addEventListener('click', clearContent);
+    document.getElementById('btnSimpan').addEventListener('click', saveManual);
+    document.getElementById('btnReset').addEventListener('click', resetAll);
+    document.getElementById('btnPrint').addEventListener('click', ()=>window.print());
+    document.getElementById('btnCSV').addEventListener('click', toCSV);
+
+    // Init
+    render();
+  </script>
+</body>
+</html>
+
